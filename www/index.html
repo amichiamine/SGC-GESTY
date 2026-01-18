@@ -1,4 +1,17 @@
 <!DOCTYPE html>
+<!--
+  SGC-MineGesty - Gestion des Equipements TPE
+  
+  Architecture, Conception, Realisation: SG-Commander
+  Tous droits reserves.
+  
+  Fait sur demande de l'interesse sur description generique non detaillee
+  des informations reelles.
+  Code Clean de toutes informations reelles et/ou de test.
+  
+  Contact: StacGate.Commander@gmail.com
+  Date: Janvier 2026
+-->
 <html lang="fr">
 
 <head>
@@ -633,6 +646,27 @@
                         <i class="fas fa-plus"></i> Ajouter Marque
                     </button>
                 </div>
+                <!-- Credits Section -->
+                <div class="config-section"
+                    style="margin-top:30px;text-align:center;background:linear-gradient(135deg,var(--bg-card),var(--bg-dark));">
+                    <h3><i class="fas fa-code"></i> Credits</h3>
+                    <p style="color:var(--text-secondary);margin:15px 0;">
+                        <strong style="color:var(--primary);">Architecture, Conception, Realisation:</strong>
+                        SG-Commander<br>
+                        Tous droits reserves.
+                    </p>
+                    <p style="color:var(--text-secondary);font-size:0.85rem;margin:10px 0;">
+                        Fait sur demande de l'interesse sur description generique non detaillee des informations
+                        reelles.<br>
+                        Code Clean de toutes informations reelles et/ou de test.
+                    </p>
+                    <p style="margin-top:15px;">
+                        <i class="fas fa-envelope" style="color:var(--primary);"></i>
+                        <a href="mailto:StacGate.Commander@gmail.com"
+                            style="color:var(--info);text-decoration:none;">StacGate.Commander@gmail.com</a>
+                    </p>
+                    <p style="color:var(--text-secondary);font-size:0.8rem;margin-top:10px;">Janvier 2026</p>
+                </div>
             </div>
 
             <!-- Champs Dynamiques View -->
@@ -655,6 +689,15 @@
                 </div>
             </div>
         </main>
+    </div>
+
+    <!-- Footer Credits (fixed at bottom) -->
+    <div id="footerCredits"
+        style="position:fixed;bottom:0;left:260px;right:0;background:var(--bg-card);border-top:1px solid var(--border);padding:8px 20px;text-align:center;font-size:0.7rem;color:var(--text-secondary);z-index:100;">
+        <span style="color:var(--primary);">SGC-MineGesty</span> | Architecture, Conception, Realisation:
+        <strong>SG-Commander</strong> |
+        <a href="mailto:StacGate.Commander@gmail.com"
+            style="color:var(--info);text-decoration:none;">StacGate.Commander@gmail.com</a> | Jan 2026
     </div>
 
     <!-- Modals -->
@@ -898,6 +941,25 @@
     <script src="capacitor-adapter.js"></script>
     <script src="app.js"></script>
     <script src="app-extensions.js"></script>
+
+    <!-- Footer Credits Responsive Script -->
+    <script>
+        // Adjust footer position when sidebar toggles
+        const origToggleSidebar = window.toggleSidebar;
+        window.toggleSidebar = function () {
+            if (origToggleSidebar) origToggleSidebar();
+            const sidebar = document.getElementById('sidebar');
+            const footer = document.getElementById('footerCredits');
+            if (sidebar && footer) {
+                footer.style.left = sidebar.classList.contains('collapsed') ? '70px' : '260px';
+            }
+        };
+        // Initial check for mobile
+        if (window.innerWidth <= 768) {
+            const footer = document.getElementById('footerCredits');
+            if (footer) footer.style.left = '0';
+        }
+    </script>
 </body>
 
 </html>

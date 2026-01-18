@@ -1,6 +1,16 @@
 /**
  * SGC-MineGesty - Capacitor Adapter
  * Provides unified file operations for both Browser and Capacitor environments
+ * 
+ * Architecture, Conception, Realisation: SG-Commander
+ * Tous droits reserves.
+ * 
+ * Fait sur demande de l'interesse sur description generique non detaillee
+ * des informations reelles.
+ * Code Clean de toutes informations reelles et/ou de test.
+ * 
+ * Contact: StacGate.Commander@gmail.com
+ * Date: Janvier 2026
  */
 
 // Detect if running in Capacitor

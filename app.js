@@ -1,5 +1,17 @@
-// SGC-MineGesty - Application JavaScript
-// ===================================
+/**
+ * SGC-MineGesty - Application JavaScript
+ * ===================================
+ * 
+ * Architecture, Conception, Realisation: SG-Commander
+ * Tous droits reserves.
+ * 
+ * Fait sur demande de l'interesse sur description generique non detaillee
+ * des informations reelles.
+ * Code Clean de toutes informations reelles et/ou de test.
+ * 
+ * Contact: StacGate.Commander@gmail.com
+ * Date: Janvier 2026
+ */
 
 // --- Configuration par defaut ---
 const CONFIG_DEFAULT = {

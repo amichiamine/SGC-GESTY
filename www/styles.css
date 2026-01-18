@@ -1,4 +1,17 @@
-/* SGC-MineGesty - Styles */
+/**
+ * SGC-MineGesty - Styles
+ * 
+ * Architecture, Conception, Realisation: SG-Commander
+ * Tous droits reserves.
+ * 
+ * Fait sur demande de l'interesse sur description generique non detaillee
+ * des informations reelles.
+ * Code Clean de toutes informations reelles et/ou de test.
+ * 
+ * Contact: StacGate.Commander@gmail.com
+ * Date: Janvier 2026
+ */
+
 :root {
     --primary: #6366f1;
     --primary-dark: #4f46e5;
@@ -1401,5 +1414,21 @@ body {
     .data-table {
         min-width: auto;
         font-size: 10pt;
+    }
+}
+
+/* Footer Credits */
+#footerCredits {
+    transition: left 0.3s;
+}
+
+.sidebar.collapsed~.main-content~#footerCredits,
+body:has(.sidebar.collapsed) #footerCredits {
+    left: 70px;
+}
+
+@media (max-width: 768px) {
+    #footerCredits {
+        left: 0 !important;
     }
 }

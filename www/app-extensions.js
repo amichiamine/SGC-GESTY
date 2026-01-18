@@ -1,6 +1,17 @@
-// SGC-MineGesty - Fonctionnalites etendues
-// =====================================
-
+/**
+ * SGC-MineGesty - Fonctionnalites etendues
+ * =====================================
+ * 
+ * Architecture, Conception, Realisation: SG-Commander
+ * Tous droits reserves.
+ * 
+ * Fait sur demande de l'interesse sur description generique non detaillee
+ * des informations reelles.
+ * Code Clean de toutes informations reelles et/ou de test.
+ * 
+ * Contact: StacGate.Commander@gmail.com
+ * Date: Janvier 2026
+ */
 // --- Mise E  jour de la sauvegarde pour inclure reclamations ---
 const originalSauvegarder = sauvegarderVersLocalStorage;
 sauvegarderVersLocalStorage = function () {
