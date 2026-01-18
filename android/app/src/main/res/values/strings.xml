@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SGC-MineGesty</string>
+    <string name="title_activity_main">SGC-MineGesty</string>
+    <string name="package_name">com.stacgate.minegesty</string>
+    <string name="custom_url_scheme">com.stacgate.minegesty</string>
+</resources>
