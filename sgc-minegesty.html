@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SGC-MineGesty - Gestion des Equipements TPE</title>
+    <!-- Bibliotheques locales pour fonctionnement hors-ligne -->
+    <script src="xlsx.min.js"></script>
+    <script src="chart.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        /* Fallback font si Google Fonts ne charge pas */
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Mobile Menu Toggle -->
+        <button class="menu-toggle" id="menuToggle" onclick="toggleMobileMenu()">
+            <i class="fas fa-bars"></i>
+        </button>
+        <!-- Sidebar Overlay for mobile -->
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleMobileMenu()"></div>
+
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <i class="fas fa-microchip"></i>
+                    <span>SGC-MineGesty</span>
+                </div>
+                <button class="sidebar-toggle" onclick="toggleSidebar()">
+                    <i class="fas fa-bars"></i>
+                </button>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active" data-view="dashboard">
+                    <i class="fas fa-chart-pie"></i><span>Dashboard</span>
+                </a>
+                <a href="#" class="nav-item" data-view="clients">
+                    <i class="fas fa-users"></i><span>Clients</span>
+                </a>
+                <a href="#" class="nav-item" data-view="equipements">
+                    <i class="fas fa-terminal"></i><span>Equipements</span>
+                </a>
+                <a href="#" class="nav-item" data-view="cartes">
+                    <i class="fas fa-sim-card"></i><span>Cartes & SIM</span>
+                </a>
+                <a href="#" class="nav-item" data-view="inventaire">
+                    <i class="fas fa-warehouse"></i><span>Inventaire</span>
+                </a>
+                <a href="#" class="nav-item" data-view="historique">
+                    <i class="fas fa-history"></i><span>Historique</span>
+                </a>
+                <a href="#" class="nav-item" data-view="reclamations">
+                    <i class="fas fa-exclamation-circle"></i><span>Reclamations</span>
+                </a>
+                <a href="#" class="nav-item" data-view="repertoires">
+                    <i class="fas fa-address-book"></i><span>Repertoires</span>
+                </a>
+                <div class="nav-divider"></div>
+                <a href="#" class="nav-item" data-view="import">
+                    <i class="fas fa-file-import"></i><span>Import Excel</span>
+                </a>
+                <a href="#" class="nav-item" data-view="donnees-brutes">
+                    <i class="fas fa-database"></i><span>Donnees Brutes</span>
+                </a>
+                <a href="#" class="nav-item" data-view="export">
+                    <i class="fas fa-file-export"></i><span>Export</span>
+                </a>
+                <div class="nav-divider"></div>
+                <a href="#" class="nav-item" data-view="config">
+                    <i class="fas fa-cog"></i><span>Configuration</span>
+                </a>
+                <a href="#" class="nav-item" data-view="champs">
+                    <i class="fas fa-plus-circle"></i><span>Champs Dynamiques</span>
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <button class="btn-save" onclick="sauvegarderDonnees()">
+                    <i class="fas fa-save"></i><span>Sauvegarder</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="main-header">
+                <div class="header-title">
+                    <h1 id="pageTitle">Dashboard</h1>
+                    <span class="header-subtitle" id="pageSubtitle">Vue d'ensemble des equipements</span>
+                </div>
+                <div class="header-actions">
+                    <div class="search-box">
+                        <i class="fas fa-search"></i>
+                        <input type="text" placeholder="Rechercher..." id="globalSearch" onkeyup="rechercheGlobale()">
+                    </div>
+                    <button class="btn-icon" onclick="chargerDonnees()" title="Charger donnees">
+                        <i class="fas fa-folder-open"></i>
+                    </button>
+                    <button class="btn-icon" onclick="rafraichir()" title="Rafraichir">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Dashboard View -->
+            <div id="view-dashboard" class="view active">
+                <div class="dashboard-stats">
+                    <div class="stat-card" onclick="filtrerParEtat('tous')">
+                        <div class="stat-icon blue"><i class="fas fa-terminal"></i></div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="totalEquipements">0</span>
+                            <span class="stat-label">Total Equipements</span>
+                        </div>
+                    </div>
+                    <div class="stat-card" onclick="filtrerParEtat('operationnel')">
+                        <div class="stat-icon green"><i class="fas fa-check-circle"></i></div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="totalOperationnels">0</span>
+                            <span class="stat-label">Operationnels</span>
+                        </div>
+                    </div>
+                    <div class="stat-card" onclick="filtrerParEtat('en_panne')">
+                        <div class="stat-icon red"><i class="fas fa-exclamation-triangle"></i></div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="totalPannes">0</span>
+                            <span class="stat-label">En Panne</span>
+                        </div>
+                    </div>
+                    <div class="stat-card" onclick="filtrerParEtat('en_reparation')">
+                        <div class="stat-icon orange"><i class="fas fa-tools"></i></div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="totalReparation">0</span>
+                            <span class="stat-label">En Reparation</span>
+                        </div>
+                    </div>
+                    <div class="stat-card" onclick="afficherVue('clients')">
+                        <div class="stat-icon purple"><i class="fas fa-users"></i></div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="totalClients">0</span>
+                            <span class="stat-label">Clients</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="dashboard-charts">
+                    <div class="chart-card">
+                        <h3>Repartition par Etat</h3>
+                        <canvas id="chartEtats"></canvas>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Equipements par Wilaya</h3>
+                        <canvas id="chartWilaya"></canvas>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Par Marque</h3>
+                        <canvas id="chartMarque"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Clients View -->
+            <div id="view-clients" class="view">
+                <div class="view-toolbar">
+                    <button class="btn-primary" onclick="ouvrirModalClient()">
+                        <i class="fas fa-plus"></i> Nouveau Client
+                    </button>
+                    <div class="filters">
+                        <select id="filtreWilaya" onchange="filtrerClients()">
+                            <option value="">Toutes Wilayas</option>
+                        </select>
+                        <select id="filtreDistrict" onchange="filtrerClients()">
+                            <option value="">Tous Districts</option>
+                        </select>
+                    </div>
+                    <div class="export-dropdown">
+                        <button class="btn-secondary" onclick="toggleExportMenu('clients')">
+                            <i class="fas fa-download"></i> Exporter <i class="fas fa-caret-down"></i>
+                        </button>
+                        <div class="export-menu" id="exportMenu-clients">
+                            <a onclick="exporterVue('clients', 'excel')"><i class="fas fa-file-excel"></i> Excel</a>
+                            <a onclick="exporterVue('clients', 'html')"><i class="fas fa-file-code"></i> HTML</a>
+                            <a onclick="exporterVue('clients', 'pdf')"><i class="fas fa-file-pdf"></i> PDF</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="data-table-container">
+                    <table class="data-table" id="tableClients">
+                        <thead>
+                            <tr>
+                                <th>Code</th>
+                                <th>Raison Sociale</th>
+                                <th>Wilaya</th>
+                                <th>District</th>
+                                <th>Type Attribution</th>
+                                <th>Equipements</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Equipements View -->
+            <div id="view-equipements" class="view">
+                <div class="view-toolbar">
+                    <button class="btn-primary" onclick="ouvrirModalEquipement()">
+                        <i class="fas fa-plus"></i> Nouvel Equipement
+                    </button>
+                    <div class="filters">
+                        <select id="filtreEtat" onchange="filtrerEquipements()">
+                            <option value="">Tous Etats</option>
+                        </select>
+                        <select id="filtreMarque" onchange="filtrerEquipements()">
+                            <option value="">Toutes Marques</option>
+                        </select>
+                        <select id="filtreType" onchange="filtrerEquipements()">
+                            <option value="">Tous Types</option>
+                        </select>
+                    </div>
+                    <div class="export-dropdown">
+                        <button class="btn-secondary" onclick="toggleExportMenu('equipements')">
+                            <i class="fas fa-download"></i> Exporter <i class="fas fa-caret-down"></i>
+                        </button>
+                        <div class="export-menu" id="exportMenu-equipements">
+                            <a onclick="exporterVue('equipements', 'excel')"><i class="fas fa-file-excel"></i> Excel</a>
+                            <a onclick="exporterVue('equipements', 'html')"><i class="fas fa-file-code"></i> HTML</a>
+                            <a onclick="exporterVue('equipements', 'pdf')"><i class="fas fa-file-pdf"></i> PDF</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="data-table-container">
+                    <table class="data-table" id="tableEquipements">
+                        <thead>
+                            <tr>
+                                <th>N Serie</th>
+                                <th>Type</th>
+                                <th>Marque</th>
+                                <th>Client</th>
+                                <th>Etat</th>
+                                <th>Derniere MAJ</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Cartes & SIM View -->
+            <div id="view-cartes" class="view">
+                <div class="view-toolbar">
+                    <button class="btn-primary" onclick="ouvrirModalCarte()">
+                        <i class="fas fa-plus"></i> Nouvelle Carte/SIM
+                    </button>
+                </div>
+                <div class="data-table-container">
+                    <table class="data-table" id="tableCartes">
+                        <thead>
+                            <tr>
+                                <th>Type</th>
+                                <th>N Serie</th>
+                                <th>TPE Associe</th>
+                                <th>Client</th>
+                                <th>Etat</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Historique View -->
+            <div id="view-historique" class="view">
+                <div class="view-toolbar">
+                    <div class="filters">
+                        <input type="text" id="rechercheEquip" placeholder="N Serie...">
+                        <select id="filtreHistClient">
+                            <option value="">Tous Clients</option>
+                        </select>
+                        <select id="filtreHistEtat">
+                            <option value="">Tous Etats</option>
+                        </select>
+                        <select id="filtreHistWilaya">
+                            <option value="">Toutes Wilayas</option>
+                        </select>
+                        <input type="date" id="dateDebut">
+                        <input type="date" id="dateFin">
+                        <button class="btn-primary" onclick="rechercherHistorique()">
+                            <i class="fas fa-search"></i> Rechercher
+                        </button>
+                        <div class="export-dropdown">
+                            <button class="btn-secondary" onclick="toggleExportMenu('historique')">
+                                <i class="fas fa-download"></i> <i class="fas fa-caret-down"></i>
+                            </button>
+                            <div class="export-menu" id="exportMenu-historique">
+                                <a onclick="exporterVue('historique', 'excel')"><i class="fas fa-file-excel"></i>
+                                    Excel</a>
+                                <a onclick="exporterVue('historique', 'html')"><i class="fas fa-file-code"></i> HTML</a>
+                                <a onclick="exporterVue('historique', 'pdf')"><i class="fas fa-file-pdf"></i> PDF</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="data-table-container">
+                    <table class="data-table" id="tableHistorique">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>N Serie</th>
+                                <th>Client</th>
+                                <th>Wilaya</th>
+                                <th>Action</th>
+                                <th>Etat Avant</th>
+                                <th>Etat Apres</th>
+                                <th>Details</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historiqueTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Inventaire View -->
+            <div id="view-inventaire" class="view">
+                <div class="view-toolbar">
+                    <div class="filters">
+                        <select id="invFiltreType">
+                            <option value="">Tous Types</option>
+                            <option value="TPE">TPE</option>
+                            <option value="Carte_Gestion">Cartes Gestion</option>
+                            <option value="SIM">SIM</option>
+                        </select>
+                        <select id="invFiltreEtat">
+                            <option value="">Tous Etats</option>
+                        </select>
+                        <select id="invFiltreMarque">
+                            <option value="">Toutes Marques</option>
+                        </select>
+                        <select id="invFiltreClient">
+                            <option value="">Tous Clients</option>
+                        </select>
+                        <select id="invFiltreWilaya">
+                            <option value="">Toutes Wilayas</option>
+                        </select>
+                        <input type="date" id="invDateRef" title="Date de reference pour reconstitution">
+                        <button class="btn-primary" onclick="rafraichirInventaire()">
+                            <i class="fas fa-sync"></i> Actualiser
+                        </button>
+                        <button class="btn-secondary" onclick="exporterInventaire()">
+                            <i class="fas fa-download"></i> Exporter
+                        </button>
+                    </div>
+                </div>
+                <div class="inventaire-stats" id="inventaireStats"></div>
+                <div class="data-table-container">
+                    <table class="data-table" id="tableInventaire">
+                        <thead>
+                            <tr>
+                                <th>Type</th>
+                                <th>N Serie</th>
+                                <th>Marque/Modele</th>
+                                <th>Client</th>
+                                <th>Code Client</th>
+                                <th>Wilaya</th>
+                                <th>Etat</th>
+                                <th>Derniere MAJ</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inventaireTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Reclamations View -->
+            <div id="view-reclamations" class="view">
+                <div class="view-toolbar">
+                    <button class="btn-primary" onclick="ouvrirModalReclamation()">
+                        <i class="fas fa-plus"></i> Nouvelle Reclamation
+                    </button>
+                    <div class="filters">
+                        <select id="recFiltreStatut">
+                            <option value="">Tous Statuts</option>
+                            <option value="ouverte">Ouverte</option>
+                            <option value="en_cours">En Cours</option>
+                            <option value="resolue">Resolue</option>
+                            <option value="cloturee">Cloturee</option>
+                        </select>
+                        <select id="recFiltreClient">
+                            <option value="">Tous Clients</option>
+                        </select>
+                        <select id="recFiltrePriorite">
+                            <option value="">Toutes Priorites</option>
+                            <option value="basse">Basse</option>
+                            <option value="normale">Normale</option>
+                            <option value="haute">Haute</option>
+                            <option value="urgente">Urgente</option>
+                        </select>
+                        <button class="btn-secondary" onclick="filtrerReclamations()">
+                            <i class="fas fa-filter"></i> Filtrer
+                        </button>
+                        <div class="export-dropdown">
+                            <button class="btn-secondary" onclick="toggleExportMenu('reclamations')">
+                                <i class="fas fa-download"></i> <i class="fas fa-caret-down"></i>
+                            </button>
+                            <div class="export-menu" id="exportMenu-reclamations">
+                                <a onclick="exporterVue('reclamations', 'excel')"><i class="fas fa-file-excel"></i>
+                                    Excel</a>
+                                <a onclick="exporterVue('reclamations', 'html')"><i class="fas fa-file-code"></i>
+                                    HTML</a>
+                                <a onclick="exporterVue('reclamations', 'pdf')"><i class="fas fa-file-pdf"></i> PDF</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="data-table-container">
+                    <table class="data-table" id="tableReclamations">
+                        <thead>
+                            <tr>
+                                <th>N Recl.</th>
+                                <th>Date</th>
+                                <th>Client</th>
+                                <th>Equipement</th>
+                                <th>Objet</th>
+                                <th>Priorite</th>
+                                <th>Statut</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reclamationsTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Repertoires View -->
+            <div id="view-repertoires" class="view">
+                <div class="view-toolbar">
+                    <button class="btn-primary" onclick="ouvrirModalClient()">
+                        <i class="fas fa-plus"></i> Nouveau Client
+                    </button>
+                    <div class="filters">
+                        <input type="text" id="rechercheRepertoire" placeholder="Rechercher..."
+                            oninput="filtrerRepertoire()">
+                        <select id="filtreRepStatut" onchange="filtrerRepertoire()">
+                            <option value="">Tous Statuts</option>
+                            <option value="actif">Actif</option>
+                            <option value="suspendu">Suspendu</option>
+                            <option value="inactif">Inactif</option>
+                        </select>
+                        <select id="filtreRepWilaya" onchange="filtrerRepertoire()">
+                            <option value="">Toutes Wilayas</option>
+                        </select>
+                    </div>
+                    <div class="export-dropdown">
+                        <button class="btn-secondary" onclick="toggleExportMenu('repertoires')">
+                            <i class="fas fa-download"></i> <i class="fas fa-caret-down"></i>
+                        </button>
+                        <div class="export-menu" id="exportMenu-repertoires">
+                            <a onclick="exporterVue('clients', 'excel')"><i class="fas fa-file-excel"></i> Excel</a>
+                            <a onclick="exporterVue('clients', 'html')"><i class="fas fa-file-code"></i> HTML</a>
+                            <a onclick="exporterVue('clients', 'pdf')"><i class="fas fa-file-pdf"></i> PDF</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="data-table-container">
+                    <table class="data-table" id="tableRepertoire">
+                        <thead>
+                            <tr>
+                                <th>Code</th>
+                                <th>Raison Sociale</th>
+                                <th>Wilaya</th>
+                                <th>District</th>
+                                <th>Contact</th>
+                                <th>Statut</th>
+                                <th>Equipements</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="repertoireTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Import View -->
+            <div id="view-import" class="view">
+                <div class="import-zone">
+                    <div class="drop-zone" id="dropZone">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                        <h3>Glissez-deposez votre fichier Excel ici</h3>
+                        <p>ou cliquez pour selectionner</p>
+                        <input type="file" id="fileInput" accept=".xlsx,.xls" hidden>
+                    </div>
+                    <div class="import-preview" id="importPreview" style="display:none;">
+                        <h3>Apercu des donnees</h3>
+                        <div class="import-stats"></div>
+                        <div class="import-mapping">
+                            <h4>Mapping des colonnes</h4>
+                            <div id="mappingContainer"></div>
+                        </div>
+                        <div class="import-actions">
+                            <button class="btn-secondary" onclick="annulerImport()">Annuler</button>
+                            <button class="btn-primary" onclick="confirmerImport()">
+                                <i class="fas fa-check"></i> Importer
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Donnees Brutes View -->
+            <div id="view-donnees-brutes" class="view">
+                <div class="view-toolbar">
+                    <h3 style="margin:0;color:var(--text-primary);">
+                        <i class="fas fa-database"></i> Donnees Brutes Importees
+                    </h3>
+                    <div class="filters" style="margin-left:auto;">
+                        <span id="donneesBrutesInfo" style="color:var(--text-secondary);"></span>
+                        <button class="btn-secondary" onclick="effacerDonneesBrutes()">
+                            <i class="fas fa-trash"></i> Effacer
+                        </button>
+                        <div class="export-dropdown">
+                            <button class="btn-secondary" onclick="toggleExportMenu('donnees-brutes')">
+                                <i class="fas fa-download"></i> <i class="fas fa-caret-down"></i>
+                            </button>
+                            <div class="export-menu" id="exportMenu-donnees-brutes">
+                                <a onclick="exporterDonneesBrutes('excel')"><i class="fas fa-file-excel"></i> Excel</a>
+                                <a onclick="exporterDonneesBrutes('html')"><i class="fas fa-file-code"></i> HTML</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="data-table-container" style="max-height:calc(100vh - 200px);overflow:auto;">
+                    <table class="data-table" id="tableDonneesBrutes">
+                        <thead id="donneesBrutesHeaders"></thead>
+                        <tbody id="donneesBrutesBody"></tbody>
+                    </table>
+                </div>
+                <p id="donneesBrutesEmpty" style="text-align:center;color:var(--text-secondary);padding:50px;">
+                    <i class="fas fa-info-circle"></i> Aucune donnee brute. Importez un fichier Excel pour voir les
+                    donnees ici.
+                </p>
+            </div>
+
+            <!-- Export View -->
+            <div id="view-export" class="view">
+                <div class="export-options">
+                    <div class="export-card" onclick="exporterExcel()">
+                        <i class="fas fa-file-excel"></i>
+                        <h3>Export Excel</h3>
+                        <p>Exporter toutes les donnees vers .xlsx</p>
+                    </div>
+                    <div class="export-card" onclick="exporterJSON()">
+                        <i class="fas fa-file-code"></i>
+                        <h3>Export JSON</h3>
+                        <p>Sauvegarder la base de donnees</p>
+                    </div>
+                    <div class="export-card" onclick="exporterRapport()">
+                        <i class="fas fa-file-pdf"></i>
+                        <h3>Rapport</h3>
+                        <p>Generer un rapport detaille</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Configuration View -->
+            <div id="view-config" class="view">
+                <!-- Agent & Entite -->
+                <div class="config-section">
+                    <h3><i class="fas fa-building"></i> Parametres de l'Entite</h3>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Nom de l'Entite</label>
+                            <input type="text" id="configNomEntite" placeholder="Ex: Banque XYZ - Agence Principale"
+                                onchange="sauvegarderConfigEntite()">
+                        </div>
+                        <div class="form-group">
+                            <label>Code Entite</label>
+                            <input type="text" id="configCodeEntite" placeholder="Ex: BNK-001"
+                                onchange="sauvegarderConfigEntite()">
+                        </div>
+                    </div>
+                </div>
+                <div class="config-section">
+                    <h3><i class="fas fa-user-cog"></i> Agent Utilisateur</h3>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Nom de l'Agent</label>
+                            <input type="text" id="configAgentNom" placeholder="Nom"
+                                onchange="sauvegarderConfigAgent()">
+                        </div>
+                        <div class="form-group">
+                            <label>Prenom de l'Agent</label>
+                            <input type="text" id="configAgentPrenom" placeholder="Prenom"
+                                onchange="sauvegarderConfigAgent()">
+                        </div>
+                        <div class="form-group">
+                            <label>Matricule / ID</label>
+                            <input type="text" id="configAgentMatricule" placeholder="Matricule"
+                                onchange="sauvegarderConfigAgent()">
+                        </div>
+                    </div>
+                    <p style="color:var(--text-secondary);font-size:0.85rem;margin-top:10px;">
+                        <i class="fas fa-info-circle"></i> L'agent sera enregistre dans l'historique de toutes les
+                        operations.
+                    </p>
+                </div>
+                <div class="config-section">
+                    <h3><i class="fas fa-list"></i> Etats des Equipements</h3>
+                    <div class="config-list" id="listeEtats"></div>
+                    <button class="btn-secondary" onclick="ajouterEtat()">
+                        <i class="fas fa-plus"></i> Ajouter Etat
+                    </button>
+                </div>
+                <div class="config-section">
+                    <h3><i class="fas fa-tags"></i> Types d'Attribution</h3>
+                    <div class="config-list" id="listeAttributions"></div>
+                    <button class="btn-secondary" onclick="ajouterAttribution()">
+                        <i class="fas fa-plus"></i> Ajouter Type
+                    </button>
+                </div>
+                <div class="config-section">
+                    <h3><i class="fas fa-industry"></i> Marques d'Equipements</h3>
+                    <div class="config-list" id="listeMarques"></div>
+                    <button class="btn-secondary" onclick="ajouterMarque()">
+                        <i class="fas fa-plus"></i> Ajouter Marque
+                    </button>
+                </div>
+            </div>
+
+            <!-- Champs Dynamiques View -->
+            <div id="view-champs" class="view">
+                <div class="champs-container">
+                    <div class="champs-section">
+                        <h3><i class="fas fa-users"></i> Champs Clients</h3>
+                        <div class="champs-list" id="champsClients"></div>
+                        <button class="btn-secondary" onclick="ajouterChampClient()">
+                            <i class="fas fa-plus"></i> Ajouter Champ
+                        </button>
+                    </div>
+                    <div class="champs-section">
+                        <h3><i class="fas fa-terminal"></i> Champs Equipements</h3>
+                        <div class="champs-list" id="champsEquipements"></div>
+                        <button class="btn-secondary" onclick="ajouterChampEquipement()">
+                            <i class="fas fa-plus"></i> Ajouter Champ
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <div class="modal" id="modalClient">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalClientTitle">Nouveau Client</h2>
+                <button class="btn-close" onclick="fermerModal('modalClient')">&times;</button>
+            </div>
+            <form id="formClient" onsubmit="sauvegarderClient(event)">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Code Client *</label>
+                        <input type="text" id="clientCode" required pattern="[A-Z][0-9]{4}" placeholder="Ex: B9592">
+                    </div>
+                    <div class="form-group">
+                        <label>Raison Sociale *</label>
+                        <input type="text" id="clientRaison" required>
+                    </div>
+                    <div class="form-group">
+                        <label>District</label>
+                        <input type="text" id="clientDistrict">
+                    </div>
+                    <div class="form-group">
+                        <label>Entite Commerciale</label>
+                        <input type="text" id="clientEntite">
+                    </div>
+                    <div class="form-group">
+                        <label>Wilaya</label>
+                        <input type="text" id="clientWilaya">
+                    </div>
+                    <div class="form-group">
+                        <label>Commune</label>
+                        <input type="text" id="clientCommune">
+                    </div>
+                    <div class="form-group">
+                        <label>Adresse</label>
+                        <input type="text" id="clientAdresse">
+                    </div>
+                    <div class="form-group">
+                        <label>Type Attribution</label>
+                        <select id="clientAttribution"></select>
+                    </div>
+                    <div id="champsClientsDynamiques"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" onclick="fermerModal('modalClient')">Annuler</button>
+                    <button type="submit" class="btn-primary">Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal" id="modalEquipement">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalEquipementTitle">Nouvel Equipement</h2>
+                <button class="btn-close" onclick="fermerModal('modalEquipement')">&times;</button>
+            </div>
+            <form id="formEquipement" onsubmit="sauvegarderEquipement(event)">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Type *</label>
+                        <select id="equipType" required></select>
+                    </div>
+                    <div class="form-group">
+                        <label>N Serie *</label>
+                        <input type="text" id="equipSerie" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Marque</label>
+                        <select id="equipMarque"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Modele</label>
+                        <input type="text" id="equipModele">
+                    </div>
+                    <div class="form-group">
+                        <label>Client</label>
+                        <select id="equipClient"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Etat</label>
+                        <select id="equipEtat"></select>
+                    </div>
+                    <div id="champsEquipementsDynamiques"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary"
+                        onclick="fermerModal('modalEquipement')">Annuler</button>
+                    <button type="submit" class="btn-primary">Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal" id="modalAction">
+        <div class="modal-content modal-small">
+            <div class="modal-header">
+                <h2 id="modalActionTitle">Changer Etat</h2>
+                <button class="btn-close" onclick="fermerModal('modalAction')">&times;</button>
+            </div>
+            <form id="formAction" onsubmit="confirmerAction(event)">
+                <div class="form-group">
+                    <label>Nouvel Etat *</label>
+                    <select id="actionNouvelEtat" required onchange="verifierActionSpeciale()"></select>
+                </div>
+                <div class="form-group" id="groupRemplacement" style="display:none;">
+                    <label>Equipement de Remplacement</label>
+                    <input type="text" id="actionRemplacement" placeholder="N Serie du nouvel equipement">
+                </div>
+                <div class="form-group" id="groupRedeploiement" style="display:none;">
+                    <label>Nouveau Client</label>
+                    <select id="actionNouveauClient"></select>
+                </div>
+                <div class="form-group">
+                    <label>Nature de la panne</label>
+                    <input type="text" id="actionNaturePanne">
+                </div>
+                <div class="form-group">
+                    <label>Notes</label>
+                    <textarea id="actionNotes" rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Valide par</label>
+                    <input type="text" id="actionValidePar">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" onclick="fermerModal('modalAction')">Annuler</button>
+                    <button type="submit" class="btn-primary">Confirmer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal" id="modalChamp">
+        <div class="modal-content modal-small">
+            <div class="modal-header">
+                <h2>Nouveau Champ Dynamique</h2>
+                <button class="btn-close" onclick="fermerModal('modalChamp')">&times;</button>
+            </div>
+            <form id="formChamp" onsubmit="sauvegarderChamp(event)">
+                <input type="hidden" id="champCategorie">
+                <div class="form-group">
+                    <label>Nom du champ *</label>
+                    <input type="text" id="champNom" required>
+                </div>
+                <div class="form-group">
+                    <label>Type *</label>
+                    <select id="champType" required>
+                        <option value="text">Texte</option>
+                        <option value="number">Nombre</option>
+                        <option value="date">Date</option>
+                        <option value="select">Liste deroulante</option>
+                        <option value="checkbox">Case a cocher</option>
+                    </select>
+                </div>
+                <div class="form-group" id="champOptionsGroup" style="display:none;">
+                    <label>Options (separees par virgule)</label>
+                    <input type="text" id="champOptions">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" onclick="fermerModal('modalChamp')">Annuler</button>
+                    <button type="submit" class="btn-primary">Ajouter</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal" id="modalHistorique">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h2 id="modalHistoriqueTitle">Historique Equipement</h2>
+                <button class="btn-close" onclick="fermerModal('modalHistorique')">&times;</button>
+            </div>
+            <div class="historique-detail" id="historiqueDetail"></div>
+        </div>
+    </div>
+
+    <!-- Modal Reclamation -->
+    <div class="modal" id="modalReclamation">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalReclamationTitle">Nouvelle Reclamation</h2>
+                <button class="btn-close" onclick="fermerModal('modalReclamation')">&times;</button>
+            </div>
+            <form id="formReclamation" onsubmit="sauvegarderReclamation(event)">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Client *</label>
+                        <select id="recClient" required></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Equipement concerne</label>
+                        <select id="recEquipement"></select>
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Objet de la reclamation *</label>
+                        <input type="text" id="recObjet" required>
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Description</label>
+                        <textarea id="recDescription" rows="4"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Priorite</label>
+                        <select id="recPriorite">
+                            <option value="basse">Basse</option>
+                            <option value="normale" selected>Normale</option>
+                            <option value="haute">Haute</option>
+                            <option value="urgente">Urgente</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Statut</label>
+                        <select id="recStatut">
+                            <option value="ouverte">Ouverte</option>
+                            <option value="en_cours">En Cours</option>
+                            <option value="resolue">Resolue</option>
+                            <option value="cloturee">Cloturee</option>
+                        </select>
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Notes de suivi</label>
+                        <textarea id="recNotes" rows="3"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary"
+                        onclick="fermerModal('modalReclamation')">Annuler</button>
+                    <button type="submit" class="btn-primary">Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="app.js"></script>
+    <script src="app-extensions.js"></script>
+</body>
+
+</html>
