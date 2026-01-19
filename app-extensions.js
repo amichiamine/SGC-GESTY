@@ -315,16 +315,48 @@ function ouvrirModalReclamation(id = null) {
     state.reclamationEnCours = id;
     document.getElementById('modalReclamationTitle').textContent = id ? 'Modifier Reclamation' : 'Nouvelle Reclamation';
 
-    // Remplir selects
+    // Remplir select clients
     document.getElementById('recClient').innerHTML = '<option value="">-- Selectionner --</option>' +
         state.clients.map(c => `<option value="${c.id}">${c.codeClient} - ${c.raisonSociale}</option>`).join('');
-    document.getElementById('recEquipement').innerHTML = '<option value="">-- Optionnel --</option>' +
-        state.equipements.map(e => `<option value="${e.id}">${e.numeroSerie} (${e.type})</option>`).join('');
+
+    // Fonction pour filtrer les equipements selon le client selectionne
+    function filtrerEquipementsParClient(clientId) {
+        const equipSelect = document.getElementById('recEquipement');
+        const currentValue = equipSelect.value;
+
+        let equipements = state.equipements;
+        if (clientId) {
+            equipements = state.equipements.filter(e => e.clientId === clientId);
+        }
+
+        equipSelect.innerHTML = '<option value="">-- Optionnel --</option>' +
+            equipements.map(e => {
+                const client = state.clients.find(c => c.id === e.clientId);
+                const clientInfo = client ? ` - ${client.raisonSociale}` : '';
+                return `<option value="${e.id}">${e.numeroSerie} (${e.type})${clientInfo}</option>`;
+            }).join('');
+
+        // Restaurer la valeur si elle existe encore dans la liste
+        if (currentValue && equipements.some(e => e.id === currentValue)) {
+            equipSelect.value = currentValue;
+        }
+    }
+
+    // Initialiser avec tous les equipements
+    filtrerEquipementsParClient('');
+
+    // Ajouter l'event listener pour le changement de client
+    const clientSelect = document.getElementById('recClient');
+    clientSelect.onchange = function () {
+        filtrerEquipementsParClient(this.value);
+    };
 
     if (id) {
         const rec = state.reclamations.find(r => r.id === id);
         if (rec) {
             document.getElementById('recClient').value = rec.clientId || '';
+            // Filtrer les equipements pour ce client
+            filtrerEquipementsParClient(rec.clientId || '');
             document.getElementById('recEquipement').value = rec.equipementId || '';
             document.getElementById('recObjet').value = rec.objet || '';
             document.getElementById('recDescription').value = rec.description || '';
@@ -468,6 +500,8 @@ function obtenirDonneesVue(vue) {
             return obtenirDonneesReclamations();
         case 'inventaire':
             return obtenirDonneesInventaire();
+        case 'commandes':
+            return obtenirDonneesCommandes();
         default:
             return { headers: [], rows: [] };
     }
@@ -583,6 +617,50 @@ function obtenirDonneesInventaire() {
             }
         });
     }
+
+    return { headers, rows };
+}
+
+function obtenirDonneesCommandes() {
+    const headers = ['N° Commande', 'Type', 'Client', 'Code Client', 'Quantité', 'Date Création', 'État', 'Date Livraison'];
+    const rows = [];
+
+    // Appliquer les filtres actuels
+    let commandes = [...state.commandes];
+    const filtreType = document.getElementById('cmdFiltreType')?.value;
+    const filtreEtat = document.getElementById('cmdFiltreEtat')?.value;
+    const filtreClient = document.getElementById('cmdFiltreClient')?.value;
+    const recherche = document.getElementById('cmdRecherche')?.value?.toLowerCase();
+    const dateDebut = document.getElementById('cmdDateDebut')?.value;
+    const dateFin = document.getElementById('cmdDateFin')?.value;
+
+    if (filtreType) commandes = commandes.filter(c => c.type === filtreType);
+    if (filtreEtat) commandes = commandes.filter(c => c.etat === filtreEtat);
+    if (filtreClient) commandes = commandes.filter(c => c.clientId === filtreClient);
+    if (dateDebut) commandes = commandes.filter(c => new Date(c.dateCreation) >= new Date(dateDebut));
+    if (dateFin) commandes = commandes.filter(c => new Date(c.dateCreation) <= new Date(dateFin + 'T23:59:59'));
+    if (recherche) {
+        commandes = commandes.filter(cmd => {
+            const client = state.clients.find(c => c.id === cmd.clientId);
+            const searchStr = `${cmd.numero} ${cmd.type} ${client?.raisonSociale || ''} ${client?.codeClient || ''}`.toLowerCase();
+            return searchStr.includes(recherche);
+        });
+    }
+
+    commandes.forEach(cmd => {
+        const client = state.clients.find(c => c.id === cmd.clientId);
+        const etatInfo = state.config.etatsCommande.find(e => e.id === cmd.etat);
+        rows.push([
+            cmd.numero,
+            cmd.type,
+            client ? client.raisonSociale : '',
+            client ? client.codeClient : '',
+            cmd.quantite,
+            new Date(cmd.dateCreation).toLocaleDateString('fr-FR'),
+            etatInfo ? etatInfo.label : cmd.etat,
+            cmd.dateLivraison ? new Date(cmd.dateLivraison).toLocaleDateString('fr-FR') : ''
+        ]);
+    });
 
     return { headers, rows };
 }
@@ -1219,3 +1297,925 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 console.log('SGC-MineGesty Extensions v4.1 chargees - Responsive Mobile/Tablette');
+
+// =================================================================
+// SGC-MineGesty v4.2 - CORRECTIFS UTILISATEUR (01/2026)
+// =================================================================
+
+// --- FIX #1: MAJ Automatique Equipement lors Creation/Edition Reclamation ---
+const originalSauvegarderReclamation = sauvegarderReclamation;
+sauvegarderReclamation = function (e) {
+    e.preventDefault();
+
+    const recStatut = document.getElementById('recStatut').value;
+    const equipementId = document.getElementById('recEquipement').value;
+    const isNew = !state.reclamationEnCours;
+
+    // Mapping statut reclamation -> etat equipement
+    const statutEquipementMapping = {
+        'ouverte': 'en_panne',
+        'en_cours': 'en_reparation',
+        'resolue': 'operationnel',
+        'cloturee': 'operationnel'
+    };
+
+    // Si equipement lie, mettre a jour son etat
+    if (equipementId) {
+        const equipement = state.equipements.find(eq => eq.id === equipementId);
+        if (equipement) {
+            const ancienEtat = equipement.etat;
+            const nouvelEtat = statutEquipementMapping[recStatut] || equipement.etat;
+
+            if (ancienEtat !== nouvelEtat) {
+                equipement.etat = nouvelEtat;
+
+                // Ajouter entree historique
+                if (!equipement.historique) equipement.historique = [];
+                equipement.historique.push({
+                    date: new Date().toISOString(),
+                    action: 'MAJ_VIA_RECLAMATION',
+                    etatAvant: ancienEtat,
+                    etatApres: nouvelEtat,
+                    notes: `Modifie via reclamation (Statut: ${recStatut})`,
+                    agent: getAgentInfo()
+                });
+            }
+        }
+    }
+
+    // Appeler logique originale
+    originalSauvegarderReclamation.call(this, { preventDefault: () => { } });
+
+    // Rafraichir les autres onglets
+    if (typeof rafraichirTableEquipements === 'function') rafraichirTableEquipements();
+    if (typeof rafraichirDashboard === 'function') rafraichirDashboard();
+};
+
+// --- FIX #4: Ouvrir Modal Client depuis Modal Equipement ---
+function ouvrirModalClientDepuisEquipement() {
+    // Sauvegarder temporairement les donnees du formulaire equipement
+    const tempEquip = {
+        type: document.getElementById('equipType')?.value,
+        serie: document.getElementById('equipSerie')?.value,
+        marque: document.getElementById('equipMarque')?.value,
+        modele: document.getElementById('equipModele')?.value,
+        etat: document.getElementById('equipEtat')?.value
+    };
+    sessionStorage.setItem('sgc_temp_equip', JSON.stringify(tempEquip));
+
+    // Fermer modal equipement et ouvrir modal client
+    fermerModal('modalEquipement');
+
+    // Marquer le retour vers equipement
+    state.retourVersEquipement = true;
+
+    ouvrirModalClient();
+    toast('Creez le nouveau client, puis revenez a l\'equipement', 'info');
+}
+
+// Intercepter la sauvegarde client pour revenir a l'equipement
+const originalSauvegarderClient = sauvegarderClient;
+sauvegarderClient = function (e) {
+    originalSauvegarderClient.call(this, e);
+
+    // Si on doit revenir a l'equipement
+    if (state.retourVersEquipement) {
+        state.retourVersEquipement = false;
+
+        setTimeout(() => {
+            ouvrirModalEquipement();
+
+            // Restaurer les donnees temporaires
+            const tempData = sessionStorage.getItem('sgc_temp_equip');
+            if (tempData) {
+                const temp = JSON.parse(tempData);
+                if (temp.type) document.getElementById('equipType').value = temp.type;
+                if (temp.serie) document.getElementById('equipSerie').value = temp.serie;
+                if (temp.marque) document.getElementById('equipMarque').value = temp.marque;
+                if (temp.modele) document.getElementById('equipModele').value = temp.modele;
+                if (temp.etat) document.getElementById('equipEtat').value = temp.etat;
+
+                // Selectionner le nouveau client (le dernier ajoute)
+                if (state.clients.length > 0) {
+                    const dernierClient = state.clients[state.clients.length - 1];
+                    setTimeout(() => {
+                        document.getElementById('equipClient').value = dernierClient.id;
+                    }, 100);
+                }
+
+                sessionStorage.removeItem('sgc_temp_equip');
+            }
+        }, 300);
+    }
+};
+
+// --- FIX #6: Affichage Client dans Equipements (correction lookup amelioree) ---
+const originalAfficherLigneEquipement = afficherLigneEquipement;
+afficherLigneEquipement = function (eq, tbody) {
+    // Recherche client avec plusieurs fallbacks
+    let client = null;
+    let clientNom = '-';
+
+    // 1. Par clientId
+    if (eq.clientId) {
+        client = state.clients.find(c => c.id === eq.clientId);
+    }
+
+    // 2. Par codeClient stocke sur l'equipement
+    if (!client && eq.codeClient) {
+        client = state.clients.find(c => c.codeClient === eq.codeClient);
+    }
+
+    // 3. Par raisonSociale stockee sur l'equipement
+    if (!client && eq.raisonSociale) {
+        client = state.clients.find(c =>
+            c.raisonSociale && c.raisonSociale.toLowerCase() === eq.raisonSociale.toLowerCase()
+        );
+    }
+
+    // 4. Chercher dans l'historique de l'equipement
+    if (!client && eq.historique && eq.historique.length > 0) {
+        for (const h of eq.historique) {
+            if (h.clientId) {
+                client = state.clients.find(c => c.id === h.clientId);
+                if (client) break;
+            }
+        }
+    }
+
+    // Determiner le nom a afficher
+    if (client) {
+        clientNom = client.raisonSociale || client.codeClient || '-';
+        // Corriger le clientId si manquant
+        if (!eq.clientId && client.id) {
+            eq.clientId = client.id;
+        }
+    } else if (eq.raisonSociale) {
+        clientNom = eq.raisonSociale;
+    }
+
+    const etatInfo = state.config.etatsEquipement.find(e => e.id === eq.etat) || { label: eq.etat, color: 'secondary' };
+    const dernierHistorique = eq.historique && eq.historique.length > 0 ? eq.historique[eq.historique.length - 1] : null;
+    const dateMAJ = dernierHistorique ? new Date(dernierHistorique.date).toLocaleDateString('fr-FR') : '-';
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+        <td><strong>${eq.numeroSerie || ''}</strong></td>
+        <td>${eq.type || 'TPE'}</td>
+        <td>${eq.marque || '-'}</td>
+        <td>${clientNom}</td>
+        <td><span class="badge badge-${etatInfo.color}">${etatInfo.label}</span></td>
+        <td>${dateMAJ}</td>
+        <td class="actions">
+            <button class="btn-secondary btn-sm" onclick="changerEtatEquipement('${eq.id}')" title="Changer etat"><i class="fas fa-exchange-alt"></i></button>
+            <button class="btn-secondary btn-sm" onclick="voirHistoriqueEquipement('${eq.id}')" title="Historique"><i class="fas fa-history"></i></button>
+            <button class="btn-secondary btn-sm" onclick="editerEquipement('${eq.id}')" title="Modifier"><i class="fas fa-edit"></i></button>
+            <button class="btn-secondary btn-sm btn-danger" onclick="supprimerEquipement('${eq.id}')" title="Supprimer"><i class="fas fa-trash"></i></button>
+        </td>
+    `;
+    tbody.appendChild(tr);
+};
+
+// --- FIX #5: Detection amelioree des dates Excel ---
+function parseExcelDate(value) {
+    if (!value) return null;
+
+    // Deja une date valide?
+    if (value instanceof Date && !isNaN(value)) return value;
+
+    // Nombre Excel (jours depuis 1900)
+    if (typeof value === 'number') {
+        // Excel date serial number
+        const excelEpoch = new Date(1899, 11, 30);
+        return new Date(excelEpoch.getTime() + value * 86400000);
+    }
+
+    // String - essayer plusieurs formats
+    if (typeof value === 'string') {
+        const str = value.trim();
+
+        // Format JJ/MM/AAAA ou J/M/AA
+        const frMatch = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+        if (frMatch) {
+            let [, day, month, year] = frMatch;
+            if (year.length === 2) year = '20' + year;
+            return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+        }
+
+        // Format AAAA-MM-JJ
+        const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (isoMatch) {
+            return new Date(str);
+        }
+
+        // Format MM/JJ/AAAA (US)
+        const usMatch = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (usMatch) {
+            let [, month, day, year] = usMatch;
+            if (parseInt(month) > 12) {
+                // Probablement JJ/MM/AAAA
+                return new Date(parseInt(year), parseInt(day) - 1, parseInt(month));
+            }
+        }
+
+        // Dernier recours
+        const parsed = new Date(str);
+        if (!isNaN(parsed)) return parsed;
+    }
+
+    return null;
+}
+
+// Remplacer la conversion de date dans le traitement Excel
+const originalTraiterFichierExcel = traiterFichierExcel;
+traiterFichierExcel = function (file) {
+    const reader = new FileReader();
+    reader.onload = function (e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array', cellDates: true, dateNF: 'dd/mm/yyyy' });
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+
+            // Use header:1 to get array of arrays (first row = headers)
+            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false, dateNF: 'dd/mm/yyyy' });
+
+            if (jsonData.length < 2) {
+                toast('Fichier vide ou sans donnees', 'error');
+                return;
+            }
+
+            // Set up state.donneesImport as expected by afficherPreviewImport
+            state.donneesImport = {
+                headers: jsonData[0],
+                rows: jsonData.slice(1).filter(row => row.some(cell => cell !== null && cell !== undefined && cell !== ''))
+            };
+
+            // Sauvegarder les donnees brutes pour visualisation
+            if (typeof sauvegarderDonneesBrutes === 'function') {
+                sauvegarderDonneesBrutes(state.donneesImport.headers, state.donneesImport.rows);
+            }
+
+            afficherPreviewImport();
+        } catch (err) {
+            console.error('Erreur lecture fichier:', err);
+            toast('Erreur de lecture du fichier Excel', 'danger');
+        }
+    };
+    reader.readAsArrayBuffer(file);
+};
+
+// --- FIX #8 & #9: Inventaire - Filtres fonctionnels + Periode ---
+const originalRafraichirInventaire = rafraichirInventaire;
+rafraichirInventaire = function () {
+    // Initialiser les filtres
+    const invFiltreEtat = document.getElementById('invFiltreEtat');
+    const invFiltreMarque = document.getElementById('invFiltreMarque');
+    const invFiltreClient = document.getElementById('invFiltreClient');
+    const invFiltreWilaya = document.getElementById('invFiltreWilaya');
+
+    if (invFiltreEtat && invFiltreEtat.options.length <= 1) {
+        invFiltreEtat.innerHTML = '<option value="">Tous Etats</option>' +
+            state.config.etatsEquipement.map(e => `<option value="${e.id}">${e.label}</option>`).join('');
+    }
+    if (invFiltreMarque && invFiltreMarque.options.length <= 1) {
+        invFiltreMarque.innerHTML = '<option value="">Toutes Marques</option>' +
+            state.config.marques.map(m => `<option value="${m}">${m}</option>`).join('');
+    }
+    if (invFiltreClient && invFiltreClient.options.length <= 1) {
+        invFiltreClient.innerHTML = '<option value="">Tous Clients</option>' +
+            state.clients.map(c => `<option value="${c.id}">${c.codeClient} - ${c.raisonSociale}</option>`).join('');
+    }
+    if (invFiltreWilaya && invFiltreWilaya.options.length <= 1) {
+        const wilayas = [...new Set(state.clients.map(c => c.wilaya).filter(Boolean))];
+        invFiltreWilaya.innerHTML = '<option value="">Toutes Wilayas</option>' +
+            wilayas.map(w => `<option value="${w}">${w}</option>`).join('');
+    }
+
+    // Appliquer les filtres
+    let items = [...state.equipements];
+    const type = document.getElementById('invFiltreType')?.value;
+    const etat = document.getElementById('invFiltreEtat')?.value;
+    const marque = document.getElementById('invFiltreMarque')?.value;
+    const clientId = document.getElementById('invFiltreClient')?.value;
+    const wilaya = document.getElementById('invFiltreWilaya')?.value;
+    const recherche = document.getElementById('invRecherche')?.value?.toLowerCase() || '';
+    const dateDebut = document.getElementById('invDateDebut')?.value;
+    const dateFin = document.getElementById('invDateFin')?.value;
+
+    // Filtres de base
+    if (type) items = items.filter(e => e.type === type);
+    if (etat) items = items.filter(e => e.etat === etat);
+    if (marque) items = items.filter(e => e.marque === marque);
+    if (clientId) items = items.filter(e => e.clientId === clientId);
+    if (wilaya) {
+        const clientsWilaya = state.clients.filter(c => c.wilaya === wilaya).map(c => c.id);
+        items = items.filter(e => clientsWilaya.includes(e.clientId));
+    }
+
+    // Filtre par periode (date derniere MAJ)
+    if (dateDebut || dateFin) {
+        items = items.filter(eq => {
+            const dernierH = eq.historique && eq.historique.length > 0 ? eq.historique[eq.historique.length - 1] : null;
+            if (!dernierH) return !dateDebut && !dateFin;
+            const dateH = new Date(dernierH.date);
+            if (dateDebut && dateH < new Date(dateDebut)) return false;
+            if (dateFin && dateH > new Date(dateFin + 'T23:59:59')) return false;
+            return true;
+        });
+    }
+
+    // Recherche textuelle
+    if (recherche) {
+        items = items.filter(eq => {
+            const client = state.clients.find(c => c.id === eq.clientId);
+            const champs = [
+                eq.numeroSerie, eq.type, eq.marque, eq.modele,
+                client?.raisonSociale, client?.codeClient, client?.wilaya
+            ];
+            return champs.some(ch => ch && String(ch).toLowerCase().includes(recherche));
+        });
+    }
+
+    // Statistiques
+    const stats = document.getElementById('inventaireStats');
+    if (stats) {
+        const totaux = {};
+        state.config.etatsEquipement.forEach(e => totaux[e.id] = 0);
+        items.forEach(eq => {
+            if (totaux[eq.etat] !== undefined) totaux[eq.etat]++;
+        });
+
+        stats.innerHTML = `
+            <div class="dashboard-stats" style="margin-bottom:20px;">
+                <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-list"></i></div>
+                    <div class="stat-info"><span class="stat-value">${items.length}</span><span class="stat-label">Total Filtre</span></div></div>
+                ${state.config.etatsEquipement.slice(0, 4).map(e => `
+                    <div class="stat-card"><div class="stat-icon ${e.color === 'success' ? 'green' : e.color === 'danger' ? 'red' : 'orange'}">
+                        <i class="fas fa-circle"></i></div>
+                        <div class="stat-info"><span class="stat-value">${totaux[e.id] || 0}</span><span class="stat-label">${e.label}</span></div></div>
+                `).join('')}
+            </div>
+        `;
+    }
+
+    // Tableau
+    const tbody = document.getElementById('inventaireTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    items.forEach(eq => {
+        const client = state.clients.find(c => c.id === eq.clientId);
+        const etatInfo = state.config.etatsEquipement.find(e => e.id === eq.etat) || { label: eq.etat, color: 'secondary' };
+        const dernierHistorique = eq.historique && eq.historique.length > 0 ? eq.historique[eq.historique.length - 1] : null;
+        const dateMAJ = dernierHistorique ? new Date(dernierHistorique.date).toLocaleDateString('fr-FR') : '-';
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${eq.type || 'TPE'}</td>
+            <td><strong>${eq.numeroSerie || ''}</strong></td>
+            <td>${eq.marque || '-'} ${eq.modele ? '/ ' + eq.modele : ''}</td>
+            <td>${client ? client.raisonSociale : '-'}</td>
+            <td>${client ? client.codeClient : '-'}</td>
+            <td>${client ? client.wilaya || '-' : '-'}</td>
+            <td><span class="badge badge-${etatInfo.color}">${etatInfo.label}</span></td>
+            <td>${dateMAJ}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+
+    if (items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-secondary);">Aucun equipement trouve</td></tr>';
+    }
+};
+
+console.log('SGC-MineGesty v4.2 - Correctifs utilisateur charges');
+
+// =================================================================
+// THEME SWITCHING
+// =================================================================
+
+function changerTheme(theme) {
+    // Remove all theme classes
+    document.body.classList.remove('theme-classic-pro', 'theme-rose-gold');
+
+    // Apply new theme (night is default, no class needed)
+    if (theme !== 'night') {
+        document.body.classList.add('theme-' + theme);
+    }
+
+    // Update button states
+    document.querySelectorAll('.theme-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.classList.contains(theme)) btn.classList.add('active');
+    });
+
+    // Save preference
+    localStorage.setItem('sgc_theme', theme);
+
+    const themeNames = {
+        'night': 'Mode Sombre',
+        'classic-pro': 'Classic Pro',
+        'rose-gold': 'Rose Gold',
+        'vert-or': 'Vert Or',
+        'bleu-or': 'Bleu Or'
+    };
+    toast('Theme applique: ' + (themeNames[theme] || theme), 'success');
+}
+
+// Load saved theme on startup
+document.addEventListener('DOMContentLoaded', () => {
+    const savedTheme = localStorage.getItem('sgc_theme');
+    if (savedTheme && savedTheme !== 'night') {
+        document.body.classList.add('theme-' + savedTheme);
+
+        // Update button states
+        document.querySelectorAll('.theme-btn').forEach(btn => {
+            btn.classList.remove('active');
+            if (btn.classList.contains(savedTheme)) btn.classList.add('active');
+        });
+    }
+});
+
+console.log('SGC-MineGesty v4.3 - Themes Day Mode ajoutes');
+
+// =========================================
+// MODULE COMMANDES - v5.0
+// =========================================
+
+// Generer numero de commande unique
+function genererNumeroCommande() {
+    const year = new Date().getFullYear();
+    const count = state.commandes.filter(c => c.numero && c.numero.includes(year)).length + 1;
+    return `CMD-${year}-${String(count).padStart(4, '0')}`;
+}
+
+// Rafraichir table des commandes avec filtres
+function rafraichirTableCommandes() {
+    const tbody = document.getElementById('commandesTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    // Recuperer filtres
+    const filtreType = document.getElementById('cmdFiltreType')?.value || '';
+    const filtreEtat = document.getElementById('cmdFiltreEtat')?.value || '';
+    const filtreClient = document.getElementById('cmdFiltreClient')?.value || '';
+    const recherche = document.getElementById('cmdRecherche')?.value?.toLowerCase() || '';
+    const dateDebut = document.getElementById('cmdDateDebut')?.value || '';
+    const dateFin = document.getElementById('cmdDateFin')?.value || '';
+
+    // Peupler le filtre etats
+    const selectEtat = document.getElementById('cmdFiltreEtat');
+    if (selectEtat && selectEtat.options.length <= 1) {
+        state.config.etatsCommande.forEach(e => {
+            selectEtat.innerHTML += `<option value="${e.id}">${e.label}</option>`;
+        });
+    }
+
+    // Peupler le filtre clients
+    const selectClient = document.getElementById('cmdFiltreClient');
+    if (selectClient && selectClient.options.length <= 1) {
+        state.clients.forEach(c => {
+            selectClient.innerHTML += `<option value="${c.id}">${c.codeClient} - ${c.raisonSociale}</option>`;
+        });
+    }
+
+    // Filtrer les commandes
+    let commandes = state.commandes.filter(cmd => {
+        if (filtreType && cmd.type !== filtreType) return false;
+        if (filtreEtat && cmd.etat !== filtreEtat) return false;
+        if (filtreClient && cmd.clientId !== filtreClient) return false;
+        if (dateDebut && new Date(cmd.dateCreation) < new Date(dateDebut)) return false;
+        if (dateFin && new Date(cmd.dateCreation) > new Date(dateFin + 'T23:59:59')) return false;
+        if (recherche) {
+            const client = state.clients.find(c => c.id === cmd.clientId);
+            const searchStr = `${cmd.numero} ${cmd.type} ${client?.raisonSociale || ''} ${client?.codeClient || ''}`.toLowerCase();
+            if (!searchStr.includes(recherche)) return false;
+        }
+        return true;
+    });
+
+    // Mettre a jour les stats
+    majStatsCommandes();
+
+    // Afficher les commandes
+    if (commandes.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-secondary);">Aucune commande</td></tr>';
+        return;
+    }
+
+    commandes.forEach(cmd => {
+        const client = state.clients.find(c => c.id === cmd.clientId);
+        const etatInfo = state.config.etatsCommande.find(e => e.id === cmd.etat) || { label: cmd.etat, color: 'secondary' };
+        const dateCreation = new Date(cmd.dateCreation).toLocaleDateString('fr-FR');
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><strong>${cmd.numero}</strong></td>
+            <td>${cmd.type}</td>
+            <td>${client ? client.raisonSociale : '-'}</td>
+            <td>${cmd.quantite}</td>
+            <td>${dateCreation}</td>
+            <td><span class="badge badge-${etatInfo.color}">${etatInfo.label}</span></td>
+            <td class="actions">
+                <button class="btn-secondary btn-sm" onclick="changerEtatCommande('${cmd.id}')" title="Changer état"><i class="fas fa-exchange-alt"></i></button>
+                <button class="btn-secondary btn-sm" onclick="voirHistoriqueCommande('${cmd.id}')" title="Historique"><i class="fas fa-history"></i></button>
+                <button class="btn-secondary btn-sm" onclick="editerCommande('${cmd.id}')" title="Modifier"><i class="fas fa-edit"></i></button>
+                <button class="btn-secondary btn-sm btn-danger" onclick="supprimerCommande('${cmd.id}')" title="Supprimer"><i class="fas fa-trash"></i></button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+// Mettre a jour les stats des commandes
+function majStatsCommandes() {
+    const stats = {
+        en_instance: 0,
+        validee: 0,
+        en_commande: 0,
+        recue: 0,
+        remise: 0
+    };
+
+    state.commandes.forEach(cmd => {
+        if (stats[cmd.etat] !== undefined) stats[cmd.etat]++;
+    });
+
+    if (document.getElementById('cmdEnInstance')) document.getElementById('cmdEnInstance').textContent = stats.en_instance;
+    if (document.getElementById('cmdValidees')) document.getElementById('cmdValidees').textContent = stats.validee;
+    if (document.getElementById('cmdEnCommande')) document.getElementById('cmdEnCommande').textContent = stats.en_commande;
+    if (document.getElementById('cmdRecues')) document.getElementById('cmdRecues').textContent = stats.recue;
+    if (document.getElementById('cmdRemises')) document.getElementById('cmdRemises').textContent = stats.remise;
+}
+
+// Ouvrir modal commande
+function ouvrirModalCommande(id = null) {
+    state.commandeEnCours = id;
+    document.getElementById('modalCommandeTitle').textContent = id ? 'Modifier Commande' : 'Nouvelle Commande';
+
+    // Remplir select clients
+    document.getElementById('cmdClient').innerHTML = '<option value="">-- Sélectionner --</option>' +
+        state.clients.map(c => `<option value="${c.id}">${c.codeClient} - ${c.raisonSociale}</option>`).join('');
+
+    if (id) {
+        const cmd = state.commandes.find(c => c.id === id);
+        if (cmd) {
+            document.getElementById('cmdType').value = cmd.type || '';
+            document.getElementById('cmdQuantite').value = cmd.quantite || 1;
+            document.getElementById('cmdClient').value = cmd.clientId || '';
+            document.getElementById('cmdMarque').value = cmd.marque || '';
+            document.getElementById('cmdNotes').value = cmd.notes || '';
+        }
+    } else {
+        document.getElementById('formCommande').reset();
+        document.getElementById('cmdQuantite').value = 1;
+    }
+
+    ouvrirModal('modalCommande');
+}
+
+// Sauvegarder commande
+function sauvegarderCommande(e) {
+    e.preventDefault();
+
+    const isNew = !state.commandeEnCours;
+    const now = new Date().toISOString();
+
+    const commande = {
+        id: state.commandeEnCours || genererID(),
+        numero: isNew ? genererNumeroCommande() : state.commandes.find(c => c.id === state.commandeEnCours)?.numero,
+        type: document.getElementById('cmdType').value,
+        quantite: parseInt(document.getElementById('cmdQuantite').value) || 1,
+        clientId: document.getElementById('cmdClient').value,
+        marque: document.getElementById('cmdMarque').value,
+        notes: document.getElementById('cmdNotes').value,
+        etat: isNew ? 'en_instance' : state.commandes.find(c => c.id === state.commandeEnCours)?.etat,
+        dateCreation: isNew ? now : state.commandes.find(c => c.id === state.commandeEnCours)?.dateCreation,
+        dateLivraison: null,
+        historique: isNew ? [{
+            date: now,
+            action: 'creation',
+            etatApres: 'en_instance',
+            notes: 'Commande créée'
+        }] : state.commandes.find(c => c.id === state.commandeEnCours)?.historique || []
+    };
+
+    if (isNew) {
+        state.commandes.push(commande);
+        toast(`Commande ${commande.numero} créée`, 'success');
+    } else {
+        const idx = state.commandes.findIndex(c => c.id === state.commandeEnCours);
+        if (idx >= 0) {
+            commande.historique.push({
+                date: now,
+                action: 'modification',
+                notes: 'Commande modifiée'
+            });
+            state.commandes[idx] = commande;
+        }
+        toast('Commande mise à jour', 'success');
+    }
+
+    sauvegarderVersLocalStorage();
+    fermerModal('modalCommande');
+    rafraichirTableCommandes();
+    rafraichirDashboard();
+}
+
+// Changer etat commande
+function changerEtatCommande(id) {
+    state.commandeEnCours = id;
+    const cmd = state.commandes.find(c => c.id === id);
+    if (!cmd) return;
+
+    // Remplir select etats
+    const select = document.getElementById('cmdNouvelEtat');
+    select.innerHTML = '<option value="">-- Sélectionner --</option>' +
+        state.config.etatsCommande.map(e => `<option value="${e.id}" ${e.id === cmd.etat ? 'selected' : ''}>${e.label}</option>`).join('');
+
+    document.getElementById('cmdEtatNotes').value = '';
+    document.getElementById('cmdNumeroSerie').value = '';
+    document.getElementById('groupNumeroSerie').style.display = 'none';
+
+    ouvrirModal('modalEtatCommande');
+}
+
+// Verifier si remise au client (afficher champ numero serie)
+function verifierRemiseClient() {
+    const nouvelEtat = document.getElementById('cmdNouvelEtat').value;
+    const group = document.getElementById('groupNumeroSerie');
+
+    if (nouvelEtat === 'remise') {
+        group.style.display = 'block';
+        document.getElementById('cmdNumeroSerie').required = true;
+    } else {
+        group.style.display = 'none';
+        document.getElementById('cmdNumeroSerie').required = false;
+    }
+}
+
+// Confirmer changement etat commande
+function confirmerEtatCommande(e) {
+    e.preventDefault();
+
+    const cmd = state.commandes.find(c => c.id === state.commandeEnCours);
+    if (!cmd) return;
+
+    const nouvelEtat = document.getElementById('cmdNouvelEtat').value;
+    const notes = document.getElementById('cmdEtatNotes').value;
+    const numeroSerie = document.getElementById('cmdNumeroSerie').value;
+    const now = new Date().toISOString();
+
+    const etatAvant = cmd.etat;
+    cmd.etat = nouvelEtat;
+
+    cmd.historique.push({
+        date: now,
+        action: 'changement_etat',
+        etatAvant: etatAvant,
+        etatApres: nouvelEtat,
+        notes: notes
+    });
+
+    // Si remise au client, creer l'equipement
+    if (nouvelEtat === 'remise') {
+        cmd.dateLivraison = now;
+
+        // Creer l'equipement correspondant
+        const equipement = {
+            id: genererID(),
+            type: cmd.type,
+            numeroSerie: numeroSerie || `AUTO-${cmd.numero}`,
+            marque: cmd.marque || '',
+            modele: '',
+            clientId: cmd.clientId,
+            etat: 'operationnel',
+            dateCreation: now,
+            commandeId: cmd.id,
+            historique: [{
+                date: now,
+                action: 'livraison',
+                etatApres: 'operationnel',
+                notes: `Livré via commande ${cmd.numero}`
+            }]
+        };
+
+        state.equipements.push(equipement);
+        toast(`Équipement ${equipement.numeroSerie} créé et livré`, 'success');
+    }
+
+    sauvegarderVersLocalStorage();
+    fermerModal('modalEtatCommande');
+    rafraichirTableCommandes();
+    rafraichirDashboard();
+    toast('État de la commande mis à jour', 'success');
+}
+
+// Editer commande
+function editerCommande(id) {
+    ouvrirModalCommande(id);
+}
+
+// Supprimer commande
+function supprimerCommande(id) {
+    if (!confirm('Êtes-vous sûr de vouloir supprimer cette commande ?')) return;
+
+    const idx = state.commandes.findIndex(c => c.id === id);
+    if (idx >= 0) {
+        state.commandes.splice(idx, 1);
+        sauvegarderVersLocalStorage();
+        rafraichirTableCommandes();
+        rafraichirDashboard();
+        toast('Commande supprimée', 'success');
+    }
+}
+
+// Voir historique commande
+function voirHistoriqueCommande(id) {
+    const cmd = state.commandes.find(c => c.id === id);
+    if (!cmd || !cmd.historique || cmd.historique.length === 0) {
+        toast('Aucun historique disponible', 'info');
+        return;
+    }
+
+    let html = `<h3>Historique de la commande ${cmd.numero}</h3><ul style="list-style:none;padding:0;">`;
+    cmd.historique.forEach(h => {
+        const date = new Date(h.date).toLocaleString('fr-FR');
+        const etatAvant = state.config.etatsCommande.find(e => e.id === h.etatAvant)?.label || h.etatAvant || '-';
+        const etatApres = state.config.etatsCommande.find(e => e.id === h.etatApres)?.label || h.etatApres || '-';
+        html += `<li style="padding:8px 0;border-bottom:1px solid var(--border);">
+            <strong>${date}</strong> - ${h.action || 'Action'}<br>
+            ${h.etatAvant ? `${etatAvant} → ${etatApres}` : etatApres}
+            ${h.notes ? `<br><em>${h.notes}</em>` : ''}
+        </li>`;
+    });
+    html += '</ul>';
+
+    // Afficher dans un modal d'alerte simple
+    alert(html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' '));
+}
+
+console.log('SGC-MineGesty v5.0 - Module Commandes ajoute');
+
+// =========================================
+// GESTION DYNAMIQUE TYPES ET ETATS - v5.1
+// =========================================
+
+// Afficher la liste des types d'equipement
+function afficherTypesEquipement() {
+    const container = document.getElementById('listeTypesEquipement');
+    if (!container) return;
+
+    container.innerHTML = state.config.typesEquipement.map(type => `
+        <div class="config-item" style="display:flex;justify-content:space-between;align-items:center;padding:8px;margin:4px 0;background:var(--bg-hover);border-radius:var(--radius-sm);">
+            <span>${type}</span>
+            <button class="btn-sm btn-danger" onclick="supprimerTypeEquipement('${type}')" title="Supprimer">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    `).join('');
+}
+
+// Ajouter un type d'equipement
+function ajouterTypeEquipement() {
+    const input = document.getElementById('nouveauTypeEquipement');
+    const value = input.value.trim();
+    if (!value) return toast('Entrez un nom de type', 'warning');
+    if (state.config.typesEquipement.includes(value)) return toast('Ce type existe déjà', 'warning');
+
+    state.config.typesEquipement.push(value);
+    sauvegarderVersLocalStorage();
+    input.value = '';
+    afficherTypesEquipement();
+    toast('Type d\'équipement ajouté', 'success');
+}
+
+// Supprimer un type d'equipement
+function supprimerTypeEquipement(type) {
+    if (!confirm(`Supprimer le type "${type}" ?`)) return;
+    state.config.typesEquipement = state.config.typesEquipement.filter(t => t !== type);
+    sauvegarderVersLocalStorage();
+    afficherTypesEquipement();
+    toast('Type supprimé', 'success');
+}
+
+// Afficher la liste des types de client
+function afficherTypesClient() {
+    const container = document.getElementById('listeTypesClient');
+    if (!container) return;
+
+    // Initialiser si non existant
+    if (!state.config.typesClient) state.config.typesClient = ['Standard', 'Corporate', 'SS'];
+
+    container.innerHTML = state.config.typesClient.map(type => `
+        <div class="config-item" style="display:flex;justify-content:space-between;align-items:center;padding:8px;margin:4px 0;background:var(--bg-hover);border-radius:var(--radius-sm);">
+            <span>${type}</span>
+            <button class="btn-sm btn-danger" onclick="supprimerTypeClient('${type}')" title="Supprimer">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    `).join('');
+}
+
+// Ajouter un type de client
+function ajouterTypeClient() {
+    const input = document.getElementById('nouveauTypeClient');
+    const value = input.value.trim();
+    if (!value) return toast('Entrez un nom de type', 'warning');
+
+    if (!state.config.typesClient) state.config.typesClient = ['Standard', 'Corporate', 'SS'];
+    if (state.config.typesClient.includes(value)) return toast('Ce type existe déjà', 'warning');
+
+    state.config.typesClient.push(value);
+    sauvegarderVersLocalStorage();
+    input.value = '';
+    afficherTypesClient();
+    toast('Type de client ajouté', 'success');
+}
+
+// Supprimer un type de client
+function supprimerTypeClient(type) {
+    if (!confirm(`Supprimer le type "${type}" ?`)) return;
+    state.config.typesClient = state.config.typesClient.filter(t => t !== type);
+    sauvegarderVersLocalStorage();
+    afficherTypesClient();
+    toast('Type supprimé', 'success');
+}
+
+// Afficher la liste des etats de commande
+function afficherEtatsCommande() {
+    const container = document.getElementById('listeEtatsCommande');
+    if (!container) return;
+
+    container.innerHTML = state.config.etatsCommande.map(etat => `
+        <div class="config-item" style="display:flex;justify-content:space-between;align-items:center;padding:8px;margin:4px 0;background:var(--bg-hover);border-radius:var(--radius-sm);">
+            <span><span class="badge badge-${etat.color}">${etat.label}</span></span>
+            <button class="btn-sm btn-danger" onclick="supprimerEtatCommande('${etat.id}')" title="Supprimer">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    `).join('');
+}
+
+// Ajouter un etat de commande
+function ajouterEtatCommande() {
+    const labelInput = document.getElementById('nouvelEtatCommandeLabel');
+    const colorSelect = document.getElementById('nouvelEtatCommandeColor');
+
+    const label = labelInput.value.trim();
+    const color = colorSelect.value;
+
+    if (!label) return toast('Entrez un libellé', 'warning');
+
+    const id = label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '_');
+    if (state.config.etatsCommande.find(e => e.id === id)) return toast('Cet état existe déjà', 'warning');
+
+    state.config.etatsCommande.push({ id, label, color });
+    sauvegarderVersLocalStorage();
+    labelInput.value = '';
+    afficherEtatsCommande();
+    toast('État de commande ajouté', 'success');
+}
+
+// Supprimer un etat de commande
+function supprimerEtatCommande(id) {
+    const etat = state.config.etatsCommande.find(e => e.id === id);
+    if (!etat) return;
+    if (!confirm(`Supprimer l'état "${etat.label}" ?`)) return;
+
+    state.config.etatsCommande = state.config.etatsCommande.filter(e => e.id !== id);
+    sauvegarderVersLocalStorage();
+    afficherEtatsCommande();
+    toast('État supprimé', 'success');
+}
+
+// Hook: Afficher les listes au chargement de la vue config
+const originalAfficherVueConfig = typeof afficherVue === 'function' ? afficherVue : null;
+if (originalAfficherVueConfig) {
+    const hookedAfficherVue = afficherVue;
+    window.afficherVue = function (vue) {
+        hookedAfficherVue(vue);
+        if (vue === 'configuration') {
+            setTimeout(() => {
+                afficherTypesEquipement();
+                afficherTypesClient();
+                afficherEtatsCommande();
+            }, 100);
+        }
+    };
+}
+
+// Initialisation au chargement
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+        if (state.vueActive === 'configuration') {
+            afficherTypesEquipement();
+            afficherTypesClient();
+            afficherEtatsCommande();
+        }
+    }, 500);
+});
+
+console.log('SGC-MineGesty v5.1 - Gestion dynamique types et etats');
+
