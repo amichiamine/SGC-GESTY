@@ -65,6 +65,9 @@
                 <a href="#" class="nav-item" data-view="cartes">
                     <i class="fas fa-sim-card"></i><span>Cartes & SIM</span>
                 </a>
+                <a href="#" class="nav-item" data-view="commandes">
+                    <i class="fas fa-shopping-cart"></i><span>Commandes</span>
+                </a>
                 <a href="#" class="nav-item" data-view="inventaire">
                     <i class="fas fa-warehouse"></i><span>Inventaire</span>
                 </a>
@@ -342,6 +345,72 @@
                 </div>
             </div>
 
+            <!-- Commandes View -->
+            <div id="view-commandes" class="view">
+                <div class="commandes-stats" id="commandesStats">
+                    <div class="stat-mini"><span class="stat-value" id="cmdEnInstance">0</span><span
+                            class="stat-label">En Instance</span></div>
+                    <div class="stat-mini"><span class="stat-value" id="cmdValidees">0</span><span
+                            class="stat-label">Validées</span></div>
+                    <div class="stat-mini"><span class="stat-value" id="cmdEnCommande">0</span><span
+                            class="stat-label">En Commande</span></div>
+                    <div class="stat-mini"><span class="stat-value" id="cmdRecues">0</span><span
+                            class="stat-label">Reçues</span></div>
+                    <div class="stat-mini"><span class="stat-value" id="cmdRemises">0</span><span
+                            class="stat-label">Remises</span></div>
+                </div>
+                <div class="view-toolbar">
+                    <button class="btn-primary" onclick="ouvrirModalCommande()">
+                        <i class="fas fa-plus"></i> Nouvelle Commande
+                    </button>
+                    <div class="filters">
+                        <select id="cmdFiltreType" onchange="rafraichirTableCommandes()">
+                            <option value="">Tous Types</option>
+                            <option value="TPE">TPE</option>
+                            <option value="Carte_Gestion">Carte Gestion</option>
+                            <option value="SIM">SIM</option>
+                        </select>
+                        <select id="cmdFiltreEtat" onchange="rafraichirTableCommandes()">
+                            <option value="">Tous États</option>
+                        </select>
+                        <select id="cmdFiltreClient" onchange="rafraichirTableCommandes()">
+                            <option value="">Tous Clients</option>
+                        </select>
+                        <input type="text" id="cmdRecherche" placeholder="Rechercher..."
+                            oninput="rafraichirTableCommandes()">
+                        <input type="date" id="cmdDateDebut" onchange="rafraichirTableCommandes()" title="Date début">
+                        <input type="date" id="cmdDateFin" onchange="rafraichirTableCommandes()" title="Date fin">
+                        <div class="export-dropdown">
+                            <button class="btn-secondary" onclick="toggleExportMenu('commandes')">
+                                <i class="fas fa-download"></i> Exporter <i class="fas fa-caret-down"></i>
+                            </button>
+                            <div class="export-menu" id="exportMenu-commandes">
+                                <a onclick="exporterVue('commandes', 'excel')"><i class="fas fa-file-excel"></i>
+                                    Excel</a>
+                                <a onclick="exporterVue('commandes', 'html')"><i class="fas fa-file-code"></i> HTML</a>
+                                <a onclick="exporterVue('commandes', 'pdf')"><i class="fas fa-file-pdf"></i> PDF</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="data-table-container">
+                    <table class="data-table" id="tableCommandes">
+                        <thead>
+                            <tr>
+                                <th>N° Commande</th>
+                                <th>Type</th>
+                                <th>Client</th>
+                                <th>Quantité</th>
+                                <th>Date Création</th>
+                                <th>État</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="commandesTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
             <!-- Inventaire View -->
             <div id="view-inventaire" class="view">
                 <div class="view-toolbar">
@@ -364,13 +433,24 @@
                         <select id="invFiltreWilaya">
                             <option value="">Toutes Wilayas</option>
                         </select>
-                        <input type="date" id="invDateRef" title="Date de reference pour reconstitution">
+                        <input type="text" id="invRecherche" placeholder="Rechercher..."
+                            oninput="rafraichirInventaire()">
+                        <input type="date" id="invDateDebut" title="Date debut">
+                        <input type="date" id="invDateFin" title="Date fin">
                         <button class="btn-primary" onclick="rafraichirInventaire()">
                             <i class="fas fa-sync"></i> Actualiser
                         </button>
-                        <button class="btn-secondary" onclick="exporterInventaire()">
-                            <i class="fas fa-download"></i> Exporter
-                        </button>
+                        <div class="export-dropdown">
+                            <button class="btn-secondary" onclick="toggleExportMenu('inventaire')">
+                                <i class="fas fa-download"></i> Exporter <i class="fas fa-caret-down"></i>
+                            </button>
+                            <div class="export-menu" id="exportMenu-inventaire">
+                                <a onclick="exporterVue('inventaire', 'excel')"><i class="fas fa-file-excel"></i>
+                                    Excel</a>
+                                <a onclick="exporterVue('inventaire', 'html')"><i class="fas fa-file-code"></i> HTML</a>
+                                <a onclick="exporterVue('inventaire', 'pdf')"><i class="fas fa-file-pdf"></i> PDF</a>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="inventaire-stats" id="inventaireStats"></div>
@@ -585,6 +665,26 @@
 
             <!-- Configuration View -->
             <div id="view-config" class="view">
+                <!-- Theme Selector -->
+                <div class="config-section">
+                    <h3><i class="fas fa-palette"></i> Theme de l'Application</h3>
+                    <div class="theme-selector">
+                        <button class="theme-btn night active" onclick="changerTheme('night')"
+                            title="Mode Sombre (Night)"></button>
+                        <button class="theme-btn classic-pro" onclick="changerTheme('classic-pro')"
+                            title="Classic Pro (Light)"></button>
+                        <button class="theme-btn rose-gold" onclick="changerTheme('rose-gold')"
+                            title="Rose Gold (Elegant)"></button>
+                        <button class="theme-btn vert-or" onclick="changerTheme('vert-or')"
+                            title="Vert Or (Emerald Gold)"></button>
+                        <button class="theme-btn bleu-or" onclick="changerTheme('bleu-or')"
+                            title="Bleu Or (Royal Blue Gold)"></button>
+                    </div>
+                    <p style="color:var(--text-secondary);font-size:0.85rem;">
+                        <i class="fas fa-info-circle"></i> Le theme sera sauvegarde automatiquement.
+                    </p>
+                </div>
+
                 <!-- Agent & Entite -->
                 <div class="config-section">
                     <h3><i class="fas fa-building"></i> Parametres de l'Entite</h3>
@@ -645,6 +745,46 @@
                     <button class="btn-secondary" onclick="ajouterMarque()">
                         <i class="fas fa-plus"></i> Ajouter Marque
                     </button>
+                </div>
+                <div class="config-section">
+                    <h3><i class="fas fa-boxes"></i> Types d'Equipements</h3>
+                    <div class="config-list" id="listeTypesEquipement"></div>
+                    <div style="display:flex;gap:10px;margin-top:10px;">
+                        <input type="text" id="nouveauTypeEquipement" placeholder="Nouveau type..."
+                            style="flex:1;padding:8px;">
+                        <button class="btn-primary" onclick="ajouterTypeEquipement()">
+                            <i class="fas fa-plus"></i> Ajouter
+                        </button>
+                    </div>
+                </div>
+                <div class="config-section">
+                    <h3><i class="fas fa-user-tag"></i> Types de Clients</h3>
+                    <div class="config-list" id="listeTypesClient"></div>
+                    <div style="display:flex;gap:10px;margin-top:10px;">
+                        <input type="text" id="nouveauTypeClient" placeholder="Nouveau type..."
+                            style="flex:1;padding:8px;">
+                        <button class="btn-primary" onclick="ajouterTypeClient()">
+                            <i class="fas fa-plus"></i> Ajouter
+                        </button>
+                    </div>
+                </div>
+                <div class="config-section">
+                    <h3><i class="fas fa-shopping-cart"></i> Etats des Commandes</h3>
+                    <div class="config-list" id="listeEtatsCommande"></div>
+                    <div style="display:flex;gap:10px;margin-top:10px;">
+                        <input type="text" id="nouvelEtatCommandeLabel" placeholder="Libellé..."
+                            style="flex:1;padding:8px;">
+                        <select id="nouvelEtatCommandeColor" style="padding:8px;">
+                            <option value="secondary">Gris</option>
+                            <option value="info">Bleu</option>
+                            <option value="warning">Orange</option>
+                            <option value="success">Vert</option>
+                            <option value="danger">Rouge</option>
+                        </select>
+                        <button class="btn-primary" onclick="ajouterEtatCommande()">
+                            <i class="fas fa-plus"></i> Ajouter
+                        </button>
+                    </div>
                 </div>
                 <!-- Credits Section -->
                 <div class="config-section"
@@ -711,7 +851,7 @@
                 <div class="form-grid">
                     <div class="form-group">
                         <label>Code Client *</label>
-                        <input type="text" id="clientCode" required pattern="[A-Z][0-9]{4}" placeholder="Ex: B9592">
+                        <input type="text" id="clientCode" required maxlength="10" placeholder="Ex: B9592">
                     </div>
                     <div class="form-group">
                         <label>Raison Sociale *</label>
@@ -776,7 +916,9 @@
                         <input type="text" id="equipModele">
                     </div>
                     <div class="form-group">
-                        <label>Client</label>
+                        <label>Client <button type="button" class="btn-sm btn-secondary"
+                                onclick="ouvrirModalClientDepuisEquipement()" title="Creer nouveau client"><i
+                                    class="fas fa-plus"></i></button></label>
                         <select id="equipClient"></select>
                     </div>
                     <div class="form-group">
@@ -827,6 +969,82 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn-secondary" onclick="fermerModal('modalAction')">Annuler</button>
+                    <button type="submit" class="btn-primary">Confirmer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Commande -->
+    <div class="modal" id="modalCommande">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalCommandeTitle">Nouvelle Commande</h2>
+                <button class="btn-close" onclick="fermerModal('modalCommande')">&times;</button>
+            </div>
+            <form id="formCommande" onsubmit="sauvegarderCommande(event)">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Type d'équipement *</label>
+                        <select id="cmdType" required>
+                            <option value="">-- Sélectionner --</option>
+                            <option value="TPE">TPE</option>
+                            <option value="Carte_Gestion">Carte de Gestion</option>
+                            <option value="SIM">Carte SIM</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Quantité *</label>
+                        <input type="number" id="cmdQuantite" min="1" value="1" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Client *</label>
+                        <select id="cmdClient" required></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Marque</label>
+                        <select id="cmdMarque">
+                            <option value="">-- Optionnel --</option>
+                            <option value="NewPos">NewPos</option>
+                            <option value="Move">Move</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Notes</label>
+                    <textarea id="cmdNotes" rows="3" placeholder="Informations complémentaires..."></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" onclick="fermerModal('modalCommande')">Annuler</button>
+                    <button type="submit" class="btn-primary">Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Etat Commande -->
+    <div class="modal" id="modalEtatCommande">
+        <div class="modal-content modal-small">
+            <div class="modal-header">
+                <h2>Changer État Commande</h2>
+                <button class="btn-close" onclick="fermerModal('modalEtatCommande')">&times;</button>
+            </div>
+            <form id="formEtatCommande" onsubmit="confirmerEtatCommande(event)">
+                <div class="form-group">
+                    <label>Nouvel État *</label>
+                    <select id="cmdNouvelEtat" required onchange="verifierRemiseClient()"></select>
+                </div>
+                <div class="form-group" id="groupNumeroSerie" style="display:none;">
+                    <label>N° Série Équipement *</label>
+                    <input type="text" id="cmdNumeroSerie" placeholder="Numéro de série de l'équipement">
+                </div>
+                <div class="form-group">
+                    <label>Notes</label>
+                    <textarea id="cmdEtatNotes" rows="2"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary"
+                        onclick="fermerModal('modalEtatCommande')">Annuler</button>
                     <button type="submit" class="btn-primary">Confirmer</button>
                 </div>
             </form>
@@ -937,8 +1155,7 @@
     <!-- Toast Notifications -->
     <div class="toast-container" id="toastContainer"></div>
 
-    <!-- Capacitor for hybrid app -->
-    <script src="capacitor-adapter.js"></script>
+    <!-- Application Scripts -->
     <script src="app.js"></script>
     <script src="app-extensions.js"></script>
 

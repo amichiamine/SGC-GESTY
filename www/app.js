@@ -26,11 +26,21 @@ const CONFIG_DEFAULT = {
         { id: "non_reparable", label: "Non Reparable", color: "danger" },
         { id: "restitue", label: "Restitue au Client", color: "info" },
         { id: "remplace", label: "Remplace", color: "info" },
-        { id: "redeploye", label: "Redeploye", color: "info" }
+        { id: "redeploye", label: "Redeploye", color: "info" },
+        { id: "resilie", label: "Resilie", color: "danger" },
+        { id: "reconfigure", label: "Reconfigure", color: "info" }
     ],
     typesAttribution: ["Location", "Vente", "Paiement Differe (RG)"],
-    typesEquipement: ["TPE", "Carte_Gestion", "SIM"],
+    typesEquipement: ["TPE", "Carte_Gestion", "SIM", "Carte_Corporate"],
+    typesClient: ["Standard", "Corporate", "SS"],
     marques: ["NewPos", "Move"],
+    etatsCommande: [
+        { id: "en_instance", label: "En Instance", color: "warning" },
+        { id: "validee", label: "Validee", color: "info" },
+        { id: "en_commande", label: "En Commande", color: "info" },
+        { id: "recue", label: "Recue", color: "info" },
+        { id: "remise", label: "Remise au Client", color: "success" }
+    ],
     customFields: { clients: [], equipements: [] },
     mappingImportExcel: {
         "Mode de L'operation": "modeOperation",
@@ -57,11 +67,13 @@ let state = {
     clients: [],
     equipements: [],
     cartes: [],
+    commandes: [],
     reclamations: [],
     config: JSON.parse(JSON.stringify(CONFIG_DEFAULT)),
     vueActive: 'dashboard',
     equipementEnCours: null,
     clientEnCours: null,
+    commandeEnCours: null,
     reclamationEnCours: null,
     donneesImport: null,
     charts: {}
@@ -87,6 +99,10 @@ function chargerDepuisLocalStorage() {
         if (clientsData) state.clients = JSON.parse(clientsData);
         if (equipementsData) state.equipements = JSON.parse(equipementsData);
         if (cartesData) state.cartes = JSON.parse(cartesData);
+
+        const commandesData = localStorage.getItem('sgc_commandes');
+        if (commandesData) state.commandes = JSON.parse(commandesData);
+
         if (configData) state.config = { ...CONFIG_DEFAULT, ...JSON.parse(configData) };
 
         toast('Donnees chargees depuis le stockage local', 'info');
@@ -100,6 +116,7 @@ function sauvegarderVersLocalStorage() {
         localStorage.setItem('sgc_clients', JSON.stringify(state.clients));
         localStorage.setItem('sgc_equipements', JSON.stringify(state.equipements));
         localStorage.setItem('sgc_cartes', JSON.stringify(state.cartes));
+        localStorage.setItem('sgc_commandes', JSON.stringify(state.commandes));
         localStorage.setItem('sgc_config', JSON.stringify(state.config));
         return true;
     } catch (e) {
@@ -882,8 +899,10 @@ function afficherPreviewImport() {
         { key: 'modeOperation', label: 'Mode Operation' },
         { key: 'district', label: 'District' },
         { key: 'entiteCommerciale', label: 'Entite Commerciale' },
-        { key: 'codeClient', label: 'Code Client' },
+        { key: 'codeClient', label: 'Code Client / Code Station' },
         { key: 'raisonSociale', label: 'Raison Sociale' },
+        { key: 'codeClientReconfig', label: 'Code Client RECONFIG (col 11)' },
+        { key: 'raisonSocialeReconfig', label: 'Raison Sociale RECONFIG (col 12)' },
         { key: 'wilaya', label: 'Wilaya' },
         { key: 'commune', label: 'Commune' },
         { key: 'adresse', label: 'Adresse' },
@@ -944,17 +963,22 @@ function afficherPreviewImport() {
     };
 
     // Patterns partiels en dernier recours (moins prioritaires)
+    // IMPORTANT: Les colonnes Reconfig doivent mapper vers des champs DIFFERENTS
     const mappingPartiel = {
         'operation': 'modeOperation',
         'commerciale': 'entiteCommerciale',
-        'station': 'codeClient',
-        'social': 'raisonSociale',
-        'client': 'raisonSociale',
         'panne': 'naturePanne',
         'gestion': 'carteGestion',
         'serie tpe': 'numeroSerie',
         'n serie': 'numeroSerie',
         'serie sim': 'numeroSerieSim'
+    };
+
+    // Mapping specifique pour les colonnes Reconfig - DOIT ETRE AVANT le mapping partiel standard
+    const mappingReconfig = {
+        'code station pour reconfiguration': 'codeClientReconfig',
+        'raison social reconfig': 'raisonSocialeReconfig',
+        'entite reconfig': 'entiteCommerciale'
     };
 
     // Afficher TOUTES les colonnes du fichier Excel
@@ -965,12 +989,16 @@ function afficherPreviewImport() {
         const div = document.createElement('div');
         div.className = 'mapping-row';
 
-        // Detection automatique du mapping - priorite: exact puis partiel
+        // Detection automatique du mapping - priorite: reconfig > exact > partiel
         let champDetecte = '';
         const headerLower = headerStr.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
 
-        // 1. Chercher correspondance exacte d'abord
-        if (mappingExact[headerLower]) {
+        // 0. En premier, verifier si c'est une colonne Reconfig (priorité haute)
+        if (mappingReconfig[headerLower]) {
+            champDetecte = mappingReconfig[headerLower];
+        }
+        // 1. Chercher correspondance exacte
+        else if (mappingExact[headerLower]) {
             champDetecte = mappingExact[headerLower];
         } else {
             // 2. Chercher correspondance partielle
@@ -981,6 +1009,7 @@ function afficherPreviewImport() {
                 }
             }
         }
+
 
         // Exemple de la premiere valeur
         const exempleValeur = state.donneesImport.rows[0] && state.donneesImport.rows[0][idx]
@@ -1059,14 +1088,35 @@ function confirmerImport() {
         const rowData = {};
         const rowCustom = {};
 
-        // Mapper les colonnes
+        // Mapper les colonnes - mapping simple
         for (const [idx, field] of Object.entries(mapping)) {
             rowData[field] = row[parseInt(idx)];
         }
+
         // Mapper les champs personnalises
         for (const [idx, fieldName] of Object.entries(customFields)) {
             rowCustom[fieldName] = row[parseInt(idx)];
         }
+
+        // LOGIQUE: Choisir le bon client selon le mode d'operation
+        // - Reconfiguration: utiliser codeClientReconfig/raisonSocialeReconfig (cols 11/12)
+        // - Autres modes: utiliser codeClient/raisonSociale (cols 3/4)
+        const isReconfiguration = rowData.modeOperation &&
+            String(rowData.modeOperation).toLowerCase().includes('reconfiguration');
+
+        // Determiner les valeurs client a utiliser
+        let codeClientFinal = rowData.codeClient;
+        let raisonSocialeFinal = rowData.raisonSociale;
+
+        if (isReconfiguration) {
+            // Pour Reconfiguration, prioriser les colonnes Reconfig si disponibles
+            if (rowData.codeClientReconfig) codeClientFinal = rowData.codeClientReconfig;
+            if (rowData.raisonSocialeReconfig) raisonSocialeFinal = rowData.raisonSocialeReconfig;
+        }
+
+        // Assigner les valeurs finales au rowData pour la creation
+        rowData.codeClient = codeClientFinal;
+        rowData.raisonSociale = raisonSocialeFinal;
 
         // Creer ou recuperer client
         if (rowData.codeClient) {
@@ -1104,6 +1154,8 @@ function confirmerImport() {
                     marque: rowData.marque || detecterMarque(rowData.numeroSerie),
                     modele: rowData.modele || '',
                     clientId: client ? client.id : null,
+                    codeClient: rowData.codeClient || '',  // Stocker pour fallback
+                    raisonSociale: rowData.raisonSociale || '',  // Stocker pour fallback
                     etat: convertirEtat(rowData.etatTpe || rowData.modeOperation),
                     dateCreation: new Date().toISOString(),
                     historique: [{
@@ -1112,7 +1164,8 @@ function confirmerImport() {
                         etatApres: convertirEtat(rowData.etatTpe || rowData.modeOperation),
                         naturePanne: rowData.naturePanne || '',
                         notes: `Importe depuis Excel - ${rowData.modeOperation || ''}`,
-                        agent: typeof getAgentInfo === 'function' ? getAgentInfo() : null
+                        agent: typeof getAgentInfo === 'function' ? getAgentInfo() : null,
+                        clientId: client ? client.id : null  // Stocker aussi dans historique
                     }],
                     customFields: Object.keys(rowCustom).length > 0 ? { ...rowCustom } : {}
                 };
@@ -1168,12 +1221,19 @@ function detecterMarque(numeroSerie) {
 
 function convertirEtat(etatExcel) {
     if (!etatExcel) return 'operationnel';
-    const e = String(etatExcel).toLowerCase();
+    const e = String(etatExcel).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+    // Mapping direct des valeurs Excel vers les états internes
     if (e.includes('restitue')) return 'restitue';
-    if (e.includes('reparation') || e.includes('reparation')) return 'en_reparation';
+    if (e.includes('resilier') || e.includes('resilie')) return 'resilie';
     if (e.includes('panne')) return 'en_panne';
-    if (e.includes('repare') || e.includes('repare')) return 'repare';
+    if (e.includes('reparation')) return 'en_reparation';
+    if (e.includes('repare')) return 'repare';
     if (e.includes('inactif')) return 'inactif';
+    if (e.includes('reconfiguration')) return 'reconfigure';
+    if (e.includes('non reparable') || e.includes('irreparable')) return 'non_reparable';
+
+    // Par défaut: opérationnel
     return 'operationnel';
 }
 
